@@ -57,3 +57,16 @@ NAT-правило VirtualBox: `ssh`, TCP, 127.0.0.1:2222 → гостевой �
 - Журналы: `/var/log/nginx/devops-site.access.log` и `devops-site.error.log`.
 - Доставка содержимого: `scripts/deploy.sh` (rsync с `--delete --chmod=D755,F644`, проверка доступности по HTTPS после доставки).
 - Проверка состояния: `sudo ./scripts/audit.sh`, раздел `[4] Веб-сервер`.
+
+## 9. Контейнеризация
+- Docker Engine: установлен из официального репозитория Docker (`download.docker.com`, источник `/etc/apt/sources.list.d/docker.sources`, ключ `/etc/apt/keyrings/docker.asc`). Пакеты: `docker-ce` 29.9.2, `docker-ce-cli`, `containerd.io`, `docker-buildx-plugin`, `docker-compose-plugin` 5.6.1. Пакет `docker.io` из репозитория дистрибутива не используется. Служба `docker.service` включена.
+- Группа `docker`: участник только `devops` (учётная запись имеет право sudo). Членство в группе равносильно правам root, поэтому в неё включаются только учётные записи с sudo.
+- Проект на сервере: `/home/devops/app` (`~/app`); исходный код хранится в каталоге `app/` репозитория и доставляется командой `rsync -avz --delete --chmod=D755,F644 --exclude=.env app/ devops:app/`.
+- Файл `.env`: `/home/devops/app/.env`, владелец `devops:devops`, права 600. Содержит `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` (случайный, `openssl rand -hex 16`) и `DB_HOST=db`. В репозиторий не добавляется (запись в `.gitignore`), шаблон хранится в `app/.env.example`.
+- Сервисы Compose: `app` (образ `devops-app:1.0`, собирается из `app/Dockerfile`, процесс `gunicorn` от пользователя `app`, uid 999) и `db` (`postgres:16-alpine`, проверка готовности `pg_isready`).
+- Публикуемые порты: приложение `127.0.0.1:5000 -> 5000/tcp`; порт СУБД (5432) не публикуется и доступен только внутри сети проекта. Прямого доступа к приложению из сети нет.
+- Сеть: `app_backend` (bridge); приложение обращается к СУБД по имени сервиса `db`.
+- Именованные тома: `app_db_data`, подключён к `/var/lib/postgresql/data` (данные СУБД); сохраняется при `docker compose down`, удаляется при `docker compose down -v`.
+- Обратный прокси-сервер: в блок HTTPS файла `/etc/nginx/sites-available/devops-site` добавлено `location /app/ { proxy_pass http://127.0.0.1:5000/; ... }` с заголовками `Host`, `X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`; статический ресурс по адресу `/` сохранён. При остановке приложения Nginx возвращает 502, запись об этом попадает в `/var/log/nginx/devops-site.error.log`.
+- Управление: `cd ~/app && docker compose up -d --build`, `docker compose ps`, `docker compose stop app` и `start app`, `docker compose down`.
+- Снимок состояния: `05-docker-compose`.

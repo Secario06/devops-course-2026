@@ -12,6 +12,10 @@ FAIL=0
 
 ok()  { echo "  [OK]   $1"; }
 bad() { echo "  [FAIL] $1"; FAIL=1; }
+check() {
+  local desc="$1"; shift
+  if "$@"; then ok "${desc}"; else bad "${desc}"; fi
+}
 
 if [[ $EUID -ne 0 ]]; then
   echo "Ошибка: запустите скрипт через sudo" >&2
@@ -51,6 +55,16 @@ else
 fi
 key_mode="$(stat -c %a "${KEY_FILE}" 2>/dev/null || echo "нет файла")"
 if [[ "${key_mode}" == "600" ]]; then ok "права закрытого ключа 600"; else bad "права закрытого ключа ${key_mode}, ожидалось 600"; fi
+
+echo "[5] Контейнеризация"
+ENV_FILE="${ENV_FILE:-/home/devops/app/.env}"
+db_healthy()    { [[ "$(docker inspect -f '{{.State.Health.Status}}' app-db-1 2>/dev/null)" == "healthy" ]]; }
+ports_local_only() { ! ss -tln | awk 'NR>1 {print $4}' | grep -E ':(5000|5432)$' | grep -qvE '^127\.0\.0\.1:'; }
+env_mode_600()  { [[ "$(stat -c '%a' "${ENV_FILE}" 2>/dev/null)" == "600" ]]; }
+check "служба docker активна" systemctl is-active --quiet docker
+check "контейнер СУБД app-db-1 в состоянии healthy" db_healthy
+check "порты 5000 и 5432 не прослушиваются вне 127.0.0.1" ports_local_only
+check "права файла ${ENV_FILE} равны 600" env_mode_600
 
 echo
 if (( FAIL )); then echo "Итог: есть замечания"; exit 1; fi
