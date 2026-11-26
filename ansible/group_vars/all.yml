@@ -1,0 +1,10 @@
+---
+app_image: "ghcr.io/secario06/devops-ci-app"
+app_tag: "5e0d80cf1f7a0b4c551db096f711bda5c759a2c6"
+app_container_name: "devops-ci-app"
+app_host_port: 5000
+app_internal_port: 5000
+
+# Ubuntu 26.04: /usr/bin/sudo -> sudo-rs, prompt не распознаётся Ansible;
+# используем классический sudo (пакет sudo, бинарь sudo.ws).
+ansible_become_exe: sudo.ws
